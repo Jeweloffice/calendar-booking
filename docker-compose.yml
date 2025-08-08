@@ -1,0 +1,136 @@
+---
+
+services:
+
+    
+  nest:
+    platform: linux/amd64
+    container_name: nestjs
+    restart: always
+    build:
+      context: ./nest
+      dockerfile: Dockerfile.local
+    ports:
+      - 4001:4001
+    environment:
+      - MONGO_CONNECTION_URI=mongodb://root:example@localhost:27017/calendar_booking_db?authSource=admin
+      - MONGO_DATABASE=calendar_booking_db 
+      - MONGO_USERNAME=root
+      - MONGO_PASSWORD=example
+      - AUTHENTIK_BOOTSTRAP_EMAIL=jewel@influxiqtech.com
+      - AUTHENTIK_BOOTSTRAP_PASSWORD=P@ss1234
+      - AUTHENTIK_BOOTSTRAP_NAME=Jewel Das
+      - AUTHENTIK_BOOTSTRAP_USERNAME=jewel
+
+    volumes:
+      - ./nest:/app
+    command: npm run start:debug
+    # command: node dist/main.js
+    # command: node dist/main.js
+    depends_on:
+      - mongo
+      - server
+      - worker 
+  mongo:
+    image: mongo:8.0
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=example
+    volumes:
+      - mongo_data:/data/db
+
+  postgresql:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    volumes:
+      - database:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: ${PG_PASS:?database password required}
+      POSTGRES_USER: ${PG_USER:-authentik}
+      POSTGRES_DB: ${PG_DB:-authentik}
+    env_file:
+      - .env
+  redis:
+    image: docker.io/library/redis:alpine
+    command: --save 60 1 --loglevel warning
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 3s
+    volumes:
+      - redis:/data
+  server:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2025.6.3}
+    restart: unless-stopped
+    command: server
+    environment:
+      AUTHENTIK_SECRET_KEY: ORH3hKPnHKrSd09s9D8r+UsOI4xcJOfL25Sr+w0w1dSQCYgqj0EAm7At5pfCKANx8t+y4sW/lwwI3uPk
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: Jp4kcywD0fkK61ExSPPNbeZz8QR9w0nb+hg0Ss8HZ2iyMHj5
+      AUTHENTIK_BOOTSTRAP_EMAIL: jewel@influxiqtech.com
+      AUTHENTIK_BOOTSTRAP_PASSWORD: P@ss1234
+      AUTHENTIK_BOOTSTRAP_NAME: Jewel Das
+      AUTHENTIK_BOOTSTRAP_USERNAME: jewel
+    volumes:
+      - ./media:/media
+      - ./custom-templates:/templates
+    env_file:
+      - .env
+    ports:
+      - "${COMPOSE_PORT_HTTP:-9000}:9000"
+      - "${COMPOSE_PORT_HTTPS:-9443}:9443"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  worker:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2025.6.3}
+    restart: unless-stopped
+    command: worker
+    environment:
+      AUTHENTIK_SECRET_KEY: ORH3hKPnHKrSd09s9D8r+UsOI4xcJOfL25Sr+w0w1dSQCYgqj0EAm7At5pfCKANx8t+y4sW/lwwI3uPk
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: Jp4kcywD0fkK61ExSPPNbeZz8QR9w0nb+hg0Ss8HZ2iyMHj5
+      AUTHENTIK_BOOTSTRAP_EMAIL: jewel@influxiqtech.com
+      AUTHENTIK_BOOTSTRAP_PASSWORD: P@ss1234
+      AUTHENTIK_BOOTSTRAP_NAME: Jewel Das
+      AUTHENTIK_BOOTSTRAP_USERNAME: jewel
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./media:/media
+      - ./certs:/certs
+      - ./custom-templates:/templates
+    env_file:
+      - .env
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  database:
+    driver: local
+  redis:
+    driver: local
+  mongo_data:
+
