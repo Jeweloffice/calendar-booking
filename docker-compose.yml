@@ -11,7 +11,7 @@ services:
       context: ./nest
       dockerfile: Dockerfile.local
     ports:
-      - 4001:4001
+      - 4003:4003
     environment:
       - MONGO_CONNECTION_URI=mongodb://root:example@localhost:27017/calendar_booking_db?authSource=admin
       - MONGO_DATABASE=calendar_booking_db 
